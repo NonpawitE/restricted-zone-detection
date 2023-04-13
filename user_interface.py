@@ -90,7 +90,7 @@ def open_file():
 ## Initialize Window Settting
 
 root = tk.Tk()  
-root.geometry("1400x850")
+root.geometry("1280x850")
 root.title("Restricted Zone Detection")
 root.resizable(False, False)
 
