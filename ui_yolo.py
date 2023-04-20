@@ -34,10 +34,12 @@ class VideoStream:
         (self.grabbed, self.frame)  = self.stream.read()
         self.stopped                = False
         self.master                 = master
-        self.zone_coords            = None
         self.canvas                 = canvas
+        
+        # Intrusion zone variables
+        self.zone_coords            = None
         self.drawing                = False
-        self.is_intruded            = False
+        self.in_zone                = False
 
     # Method to start video capture and display
     def start(self):
@@ -65,22 +67,27 @@ class VideoStream:
                 self.is_intruded = False
                 self.canvas.delete("person")
                 for _person in _persons:
-                    _x1, _y1, _x2, _y2, _conf, _cls = _person
-                    self.canvas.create_rectangle(_x1, _y1,
-                                                 _x2, _y2,
+                    x1_, y1_, x2_, y2_, conf_, cls_ = person_
+                    self.canvas.create_rectangle(x1_, y1_,
+                                                 x2_, y2_,
                                                  outline="yellow",
                                                  tag="person")   
                     
                     # Check if person in restricted zone
-                    if self.zone_coords and self.__isoverlap([_x1, _y1, _x2, _y2], 
-                                                             [self.zone_coords[0], 
-                                                              self.zone_coords[1], 
-                                                              self.zone_coords[2], 
-                                                              self.zone_coords[3]]):
-                        self.is_intruded = True
-                
-                if self.is_intruded:
-                    print("Detected Intruders")
+                    if not self.drawing and \
+                           self.zone_coords and \
+                           self.__isoverlap([x1_, y1_, x2_, y2_], 
+                                            [self.zone_coords[0], 
+                                             self.zone_coords[1], 
+                                             self.zone_coords[2], 
+                                             self.zone_coords[3]]):
+                        if not self.in_zone:
+                            self.in_zone = True
+                            crop         = self.frame[int(y1_):int(y2_), 
+                                                      int(x1_):int(x2_)]
+                            print("Detected Intruders")
+                            cv.imwrite("intruder.jpg", 
+                                       cv.cvtColor(crop, cv.COLOR_BGR2RGB))
                 
                 # Check if rectangle exists
                 if self.zone_coords:
@@ -102,24 +109,41 @@ class VideoStream:
     def stop(self):
         self.stopped = True
         self.stream.release()
+        self.__unbind()
         
     # Method to check if 2 rentangle overlapping
     def __isoverlap(self, R1, R2):
-        if (R1[0] >= R2[2]) or (R1[2] <= R2[0]) or (R1[3] <= R2[1]) or (R1[1] >= R2[3]):
+        if (R1[0] >= R2[2]) or \
+           (R1[2] <= R2[0]) or \
+           (R1[3] <= R2[1]) or \
+           (R1[1] >= R2[3]):
             return False
         else:
             return True
-        
+    
+    # Method to unbind mouse button click
+    def __unbind(self):
+        # Unbind Button Events
+        self.canvas.unbind("<Button-1>",        self.__start_rect)
+        self.canvas.unbind("<B1-Motion>",       self.__draw_rect)
+        self.canvas.unbind("<ButtonRelease-1>", self.__stop_rect)
+    
+    # Method to bind mouse button click
+    def bind(self):
+        # Unbind Button Events
+        self.canvas.bind("<Button-1>",        self.__start_rect) # On Mouse Click
+        self.canvas.bind("<B1-Motion>",       self.__draw_rect)  # On Mouse Move
+        self.canvas.bind("<ButtonRelease-1>", self.__stop_rect)  # On Mouse Release
 
     # Method to start drawing a rectangle on mouse click
-    def start_rect(self, event):
+    def __start_rect(self, event):
         self.drawing = True
         
         # Initial draw position
         self.zone_coords = [event.x, event.y, event.x, event.y]
     
     # Method to draw rectangle while mouse is down
-    def draw_rect(self, event):
+    def __draw_rect(self, event):
         if self.drawing:
             # Check if mouse is moving
             if self.zone_coords[2:] != [event.x, event.y]:
@@ -127,21 +151,17 @@ class VideoStream:
                 self.zone_coords[2:]  = [event.x, event.y]
         
     # Method to stop drawing rectangle
-    def stop_rect(self, event):
+    def __stop_rect(self, event):
         if self.drawing:
             self.drawing          = False
-            
             # Current mouse position
             self.zone_coords[2:]  = [event.x, event.y]
-            
-            # Unbind Button Events
-            canvas.unbind("<Button-1")
-            canvas.unbind("<B1-Motion")
-            canvas.unbind("<ButtonRelease-1>")
+            self.__unbind()
             
     # Method to clear all rectangle
     def clear_rect(self):
         self.zone_coords = None
+        self.__unbind()
     
     
 ## Button Functions
@@ -156,7 +176,6 @@ def start_camera():
     # Close all previous camera source
     global vs
     stop_camera()
-    
     # Open Canvas from webcam
     vs = VideoStream(master=root, canvas=canvas)
     vs.start()
@@ -177,10 +196,8 @@ def open_file():
         vs.start()
 
 def draw_rect():
-    # Bind Mouse Events
-    canvas.bind("<Button-1>",        vs.start_rect)     # On Mouse Click
-    canvas.bind("<B1-Motion>",       vs.draw_rect)      # On Mouse Click + Move
-    canvas.bind("<ButtonRelease-1>", vs.stop_rect)      # On Mouse Release
+    global vs
+    vs.bind()
 
 def clear_rect():
     global vs
