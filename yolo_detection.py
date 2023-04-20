@@ -35,12 +35,9 @@ while True:
     for person in person_results:
         x1, y1, x2, y2, conf, cls = person
         cv.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-        
-        crop = img[int(y1):int(y2), int(x1):int(x2)]
 
     # Display the output image
     cv.imshow('Output', img)
-    cv.imshow('Crop', crop)
 
     # Break the loop if 'q' key is pressed
     if cv.waitKey(1) & 0xFF == ord('q'):
