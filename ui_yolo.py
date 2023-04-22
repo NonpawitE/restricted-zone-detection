@@ -59,14 +59,14 @@ class VideoStream:
                 self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
                 
                 # Perform object detection
-                _results   = model(self.frame)
-                _pred      = np.array([x.tolist() for x in _results.pred[0]])
-                _persons   = _pred[_pred[:, 5] == 0]
+                results_   = model(self.frame)
+                pred_      = np.array([x.tolist() for x in results_.pred[0]])
+                persons_   = pred_[pred_[:, 5] == 0]
                 
                 # Draw bounding boxes around the detected persons and detect intuders
                 self.is_intruded = False
                 self.canvas.delete("person")
-                for _person in _persons:
+                for person_ in persons_:
                     x1_, y1_, x2_, y2_, conf_, cls_ = person_
                     self.canvas.create_rectangle(x1_, y1_,
                                                  x2_, y2_,
@@ -124,9 +124,9 @@ class VideoStream:
     # Method to unbind mouse button click
     def __unbind(self):
         # Unbind Button Events
-        self.canvas.unbind("<Button-1>",        self.__start_rect)
-        self.canvas.unbind("<B1-Motion>",       self.__draw_rect)
-        self.canvas.unbind("<ButtonRelease-1>", self.__stop_rect)
+        self.canvas.unbind("<Button-1>")
+        self.canvas.unbind("<B1-Motion>")
+        self.canvas.unbind("<ButtonRelease-1>")
     
     # Method to bind mouse button click
     def bind(self):
