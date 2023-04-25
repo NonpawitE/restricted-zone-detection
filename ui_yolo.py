@@ -51,7 +51,6 @@ class VideoStream:
             # Read frames from camera or video file
             (self.grabbed, self.frame) = self.stream.read()
             if self.grabbed:
-                # Convert frames from BGR to RGB and display them in the canvas
                 self.frame = cv.cvtColor(self.frame, cv.COLOR_BGR2RGB)
                 
                 # Display current video frame to canvas
@@ -91,7 +90,6 @@ class VideoStream:
                 
                 # Check if rectangle exists
                 if self.zone_coords:
-                    # Redraw rectangle on every frame
                     self.canvas.delete("rect")
                     self.canvas.create_rectangle(self.zone_coords[0], 
                                                  self.zone_coords[1], 
@@ -100,7 +98,6 @@ class VideoStream:
                                                  outline="red", 
                                                  tag="rect")
 
-                # Call update method after 10 milliseconds to update frames
                 self.master.after(10, self.update)
             else:
                 self.stop()
@@ -170,15 +167,20 @@ def stop_camera():
     global vs
     if vs:
         vs.stop()
-        canvas.delete("all")    
+        canvas.delete('all')   
+        if str(video_btn['image']) == str(nocam_icn):
+            video_btn.config(image=cam_icn) 
 
-def start_camera():
-    # Close all previous camera source
+def video_button():
     global vs
-    stop_camera()
-    # Open Canvas from webcam
-    vs = VideoStream(master=root, canvas=canvas)
-    vs.start()
+    
+    # Toggle Button Icon
+    if str(video_btn['image']) == str(cam_icn):
+        vs = VideoStream(master=root, canvas=canvas)
+        vs.start()
+        video_btn.config(image=nocam_icn)
+    elif str(video_btn['image']) == str(nocam_icn):
+        stop_camera()
 
 def open_file():
     # Close all previous camera source
@@ -203,6 +205,7 @@ def clear_rect():
     global vs
     vs.clear_rect()
     
+    
 ## Initialize Window Settting
 
 vs      = None
@@ -218,29 +221,70 @@ model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
 ## Frame Components
 
+cam_icn   = ImageTk.PhotoImage(Image.open('./icons/video.png'))
+nocam_icn = ImageTk.PhotoImage(Image.open('./icons/no-video.png'))
+open_icn  = ImageTk.PhotoImage(Image.open('./icons/open-file.png'))
+rect_icn  = ImageTk.PhotoImage(Image.open('./icons/rectangle.png'))
+circ_icn  = ImageTk.PhotoImage(Image.open('./icons/circle.png'))
+erase_icn = ImageTk.PhotoImage(Image.open('./icons/erase.png'))
+
+btn_frame = tk.Frame(root)
+btn_frame.pack(side=tk.TOP)
+
+# Spacer
+spacer    = tk.Frame(btn_frame, 
+                     width=10,
+                     bd=0,
+                     relief="ridge")
+
+# Video Button
+video_btn = tk.Button(btn_frame, 
+                      image=cam_icn, 
+                      height=30, 
+                      width=30, 
+                      command=lambda:video_button())
+video_btn.pack(side=tk.LEFT)
+
+# Open File Button
+file_btn  = tk.Button(btn_frame, 
+                      image=open_icn, 
+                      height=30, 
+                      width=30, 
+                      command=open_file)
+file_btn.pack(side=tk.LEFT)
+
+spacer.pack(side=tk.LEFT)
+
+# Draw Rectangle Button
+rect_btn  = tk.Button(btn_frame, 
+                      image=rect_icn, 
+                      height=30, 
+                      width=30, 
+                      command=draw_rect)
+rect_btn.pack(side=tk.LEFT)
+
+# Draw Circle Button
+circ_btn  = tk.Button(btn_frame, 
+                      image=circ_icn, 
+                      height=30, 
+                      width=30, 
+                      command=open_file)
+circ_btn.pack(side=tk.LEFT)
+
+# Clear Area Button
+clear_btn = tk.Button(btn_frame, 
+                      image=erase_icn, 
+                      height=30, 
+                      width=30, 
+                      command=clear_rect)
+clear_btn.pack(side=tk.LEFT)
+
 # Create Canvas for Video Capture
-canvas = tk.Canvas(root, width=1280, height=720)
-canvas.pack()
-
-# Start Video Button
-start_button = tk.Button(root, text="Start Camera",    command=start_camera)
-start_button.pack(side=tk.LEFT, padx=10, pady=10)
-
-# Stop Video Button
-stop_button  = tk.Button(root, text="Stop Camera",     command=stop_camera)
-stop_button.pack(side=tk.LEFT, padx=10, pady=10)
-
-# Select Video File Button
-open_button  = tk.Button(root, text="Open Video File", command=open_file)
-open_button.pack(side=tk.LEFT, padx=10, pady=10)
-
-# Draw Restricted Area Button
-draw_button  = tk.Button(root, text="Draw Area",       command=draw_rect)
-draw_button.pack(side=tk.LEFT, padx=10, pady=10)
-
-# Clear Restricted Area Button
-clear_button = tk.Button(root, text="Clear Area",      command=clear_rect)
-clear_button.pack(side=tk.LEFT, padx=10, pady=10)
+canvas = tk.Canvas(root, 
+                   width=1280, 
+                   height=720, 
+                   bg='lightgray')
+canvas.pack(side=tk.TOP)
 
 
 ## Main Loop & Callback
