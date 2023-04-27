@@ -37,9 +37,11 @@ class VideoStream:
         self.canvas                 = canvas
         
         # Intrusion zone variables
-        self.zone_coords            = None
-        self.drawing                = False
-        self.in_zone                = False
+        self.zone_coords    = None
+        self.drawing        = False
+        self.in_zone        = False
+        self.detect         = []
+        self.view           = False
 
     # Method to start video capture and display
     def start(self):
@@ -58,36 +60,47 @@ class VideoStream:
                 self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
                 
                 # Perform object detection
-                results_   = model(self.frame)
-                pred_      = np.array([x.tolist() for x in results_.pred[0]])
-                persons_   = pred_[pred_[:, 5] == 0]
+                with torch.no_grad():
+                    results_ = model(self.frame)
                 
-                # Draw bounding boxes around the detected persons and detect intuders
-                self.is_intruded = False
-                self.canvas.delete("person")
-                for person_ in persons_:
-                    x1_, y1_, x2_, y2_, conf_, cls_ = person_
-                    self.canvas.create_rectangle(x1_, y1_,
-                                                 x2_, y2_,
-                                                 outline="yellow",
-                                                 tag="person")   
+                # Extract results
+                boxes_      = results_.xyxy[0].cpu().numpy()
+                scores_     = results_.pred[0][:, 4].cpu().numpy()
+                labels_     = results_.pred[0][:, -1].cpu().numpy()
+                
+                # Eliminate result that have confidence score < 0.5
+                boxes_  = boxes_[(scores_ > 0.5) & np.isin(labels_, self.detect)]
+                labels_ = labels_[(scores_ > 0.5) & np.isin(labels_, self.detect)]
+                
+                                
+                if boxes_.size != 0:
+                    # Draw bounding boxes
+                    self.is_intruded = False
+                    self.canvas.delete("detect")
+                    for i in range(len(boxes_)):
+                        x1_, y1_, x2_, y2_, _, _ = boxes_[i].astype(np.int32) 
+                        
+                        if not self.view:
+                            self.canvas.create_rectangle(x1_, y1_,
+                                                         x2_, y2_,
+                                                         outline="yellow",
+                                                         tag="detect")  
+                            
+                        # Check if person in restricted zone
+                        if not self.drawing and \
+                               self.zone_coords and \
+                               self.__isoverlap([x1_, y1_, x2_, y2_], 
+                                                [self.zone_coords[0], 
+                                                 self.zone_coords[1], 
+                                                 self.zone_coords[2], 
+                                                 self.zone_coords[3]]):
+                           
+                            if self.view:
+                                self.canvas.create_rectangle(x1_, y1_,
+                                                             x2_, y2_,
+                                                             outline="yellow",
+                                                             tag="detect")  
                     
-                    # Check if person in restricted zone
-                    if not self.drawing and \
-                           self.zone_coords and \
-                           self.__isoverlap([x1_, y1_, x2_, y2_], 
-                                            [self.zone_coords[0], 
-                                             self.zone_coords[1], 
-                                             self.zone_coords[2], 
-                                             self.zone_coords[3]]):
-                        if not self.in_zone:
-                            self.in_zone = True
-                            crop         = self.frame[int(y1_):int(y2_), 
-                                                      int(x1_):int(x2_)]
-                            print("Detected Intruders")
-                            cv.imwrite("intruder.jpg", 
-                                       cv.cvtColor(crop, cv.COLOR_BGR2RGB))
-                
                 # Check if rectangle exists
                 if self.zone_coords:
                     self.canvas.delete("rect")
@@ -96,8 +109,9 @@ class VideoStream:
                                                  self.zone_coords[2], 
                                                  self.zone_coords[3], 
                                                  outline="red", 
-                                                 tag="rect")
-
+                                                 tag="rect", 
+                                                 width=3)
+    
                 self.master.after(10, self.update)
             else:
                 self.stop()
@@ -145,14 +159,14 @@ class VideoStream:
             # Check if mouse is moving
             if self.zone_coords[2:] != [event.x, event.y]:
                 # Current mouse position
-                self.zone_coords[2:]  = [event.x, event.y]
+                self.zone_coords[2:] = [event.x, event.y]
         
     # Method to stop drawing rectangle
     def __stop_rect(self, event):
         if self.drawing:
-            self.drawing          = False
+            self.drawing = False
             # Current mouse position
-            self.zone_coords[2:]  = [event.x, event.y]
+            self.zone_coords[2:] = [event.x, event.y]
             self.__unbind()
             
     # Method to clear all rectangle
@@ -167,10 +181,19 @@ def stop_camera():
     global vs
     if vs:
         vs.stop()
-        canvas.delete('all')   
+        vs = None
+        canvas.delete('all')
+        
         if str(video_btn['image']) == str(nocam_icn):
-            video_btn.config(image=cam_icn) 
+            video_btn.config(image=cam_icn)
+        
+        # Reset Button Icon
+        ppl_btn.config(image=ppl_icn0) 
+        car_btn.config(image=car_icn0) 
+        bike_btn.config(image=bike_icn0) 
+        view_btn.config(image=move_icn)
 
+            
 def video_button():
     global vs
     
@@ -187,62 +210,149 @@ def open_file():
     global vs
     stop_camera()
     
-    # Ask to open file with video file format
-    file_types  = [('Video Files', '*.avi;*.mp4;*.mov;*.mkv')]
-    file_path   = filedialog.askopenfilename(filetypes=file_types)
+    if str(file_btn['image']) == str(open_icn):
+        # Ask to open file with video file format
+        file_types  = [('Video Files', '*.avi;*.mp4;*.mov;*.mkv')]
+        file_path   = filedialog.askopenfilename(filetypes=file_types)
+        
+        # Check if file path exists
+        if file_path:
+            # Open Canvas from video file
+            vs = VideoStream(file_path, master=root, canvas=canvas)
+            vs.start()
+            
+            file_btn.config(image=stop_icn)
+    elif str(file_btn['image']) == str(stop_icn):
+        file_btn.config(image=open_icn)
+
+def detect_ppl():
+    global vs
     
-    # Check if file path exists
-    if file_path:
-        # Open Canvas from video file
-        vs = VideoStream(file_path, master=root, canvas=canvas)
-        vs.start()
+    if vs:
+        if str(ppl_btn['image']) == str(ppl_icn0):
+            vs.detect.append(person_idx)
+            ppl_btn.config(image=ppl_icn1)
+        elif str(ppl_btn['image']) == str(ppl_icn1):
+            vs.detect.remove(person_idx)
+            ppl_btn.config(image=ppl_icn0) 
+    
+def detect_car():
+    global vs
+    
+    if vs:
+        if str(car_btn['image']) == str(car_icn0):
+            vs.detect.append(car_idx)
+            car_btn.config(image=car_icn1)
+        elif str(car_btn['image']) == str(car_icn1):
+            vs.detect.remove(car_idx)
+            car_btn.config(image=car_icn0) 
+    
+def detect_bike():
+    global vs
+    
+    if vs:
+        if str(bike_btn['image']) == str(bike_icn0):
+            vs.detect.append(bike_idx)
+            bike_btn.config(image=bike_icn1)
+        elif str(bike_btn['image']) == str(bike_icn1):
+            vs.detect.remove(bike_idx)
+            bike_btn.config(image=bike_icn0) 
+
+def change_view():
+    global vs
+    
+    if vs:
+        if str(view_btn['image']) == str(move_icn):
+            vs.view = True
+            view_btn.config(image=warn_icn)
+        elif str(view_btn['image']) == str(warn_icn):
+            vs.view = False
+            view_btn.config(image=move_icn)
+            
+def import_model():
+    global model
+    stop_camera()
+    
+    if str(model_btn['image']) == str(impo_icn):
+        file_types = [('YOLOv5 Model', '*.pt')]
+        file_path  = filedialog.askopenfilename(filetypes=file_types)
+        model      = torch.load(file_path).eval()
+        
+        model_btn.config(image=remo_icn)
+    elif str(view_btn['image']) == str(remo_icn):
+        model = torch.hub.load('ultralytics/yolov5', 
+                               'yolov5s', 
+                               pretrained=True).to(device)
+        
+        model_btn.config(image=impo_icn)
 
 def draw_rect():
     global vs
-    vs.bind()
+    if vs:
+        vs.bind()
 
 def clear_rect():
     global vs
-    vs.clear_rect()
+    if vs:
+        vs.clear_rect()
     
     
 ## Initialize Window Settting
-
 vs      = None
 root    = tk.Tk()  
-root.geometry("1280x850")
+root.geometry("1280x750")
 root.title("Restricted Zone Detection")
 root.resizable(False, False)
 
 
-## Load YOLOv5 model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+## Initialize PyTorch
+device = torch.device('cuda') if torch.cuda.is_available() \
+    else torch.device('cpu')
+
+model = torch.hub.load('ultralytics/yolov5', 
+                       'yolov5s', 
+                       pretrained=True).to(device)
+
+# Get model's object index
+person_idx  = list(model.names.values()).index('person')
+car_idx     = list(model.names.values()).index('car')
+bike_idx    = list(model.names.values()).index('motorcycle')
 
 
 ## Frame Components
 
+# Icons
 cam_icn   = ImageTk.PhotoImage(Image.open('./icons/video.png'))
 nocam_icn = ImageTk.PhotoImage(Image.open('./icons/no-video.png'))
+
 open_icn  = ImageTk.PhotoImage(Image.open('./icons/open-file.png'))
+stop_icn  = ImageTk.PhotoImage(Image.open('./icons/stop.png'))
+
 rect_icn  = ImageTk.PhotoImage(Image.open('./icons/rectangle.png'))
-circ_icn  = ImageTk.PhotoImage(Image.open('./icons/circle.png'))
 erase_icn = ImageTk.PhotoImage(Image.open('./icons/erase.png'))
+
+ppl_icn0  = ImageTk.PhotoImage(Image.open('./icons/human_off.png'))
+ppl_icn1  = ImageTk.PhotoImage(Image.open('./icons/human_on.png'))
+car_icn0  = ImageTk.PhotoImage(Image.open('./icons/car_off.png'))
+car_icn1  = ImageTk.PhotoImage(Image.open('./icons/car_on.png'))
+bike_icn0 = ImageTk.PhotoImage(Image.open('./icons/bike_off.png'))
+bike_icn1 = ImageTk.PhotoImage(Image.open('./icons/bike_on.png'))
+
+warn_icn  = ImageTk.PhotoImage(Image.open('./icons/warn.png'))
+move_icn  = ImageTk.PhotoImage(Image.open('./icons/move.png'))
+
+impo_icn  = ImageTk.PhotoImage(Image.open('./icons/model_off.png'))
+remo_icn  = ImageTk.PhotoImage(Image.open('./icons/model_on.png'))
 
 btn_frame = tk.Frame(root)
 btn_frame.pack(side=tk.TOP)
-
-# Spacer
-spacer    = tk.Frame(btn_frame, 
-                     width=10,
-                     bd=0,
-                     relief="ridge")
 
 # Video Button
 video_btn = tk.Button(btn_frame, 
                       image=cam_icn, 
                       height=30, 
                       width=30, 
-                      command=lambda:video_button())
+                      command=video_button)
 video_btn.pack(side=tk.LEFT)
 
 # Open File Button
@@ -253,7 +363,12 @@ file_btn  = tk.Button(btn_frame,
                       command=open_file)
 file_btn.pack(side=tk.LEFT)
 
-spacer.pack(side=tk.LEFT)
+# Spacer
+tk.Frame(btn_frame, 
+         width=10,
+         bd=0,
+         relief="ridge") \
+    .pack(side=tk.LEFT)
 
 # Draw Rectangle Button
 rect_btn  = tk.Button(btn_frame, 
@@ -263,14 +378,6 @@ rect_btn  = tk.Button(btn_frame,
                       command=draw_rect)
 rect_btn.pack(side=tk.LEFT)
 
-# Draw Circle Button
-circ_btn  = tk.Button(btn_frame, 
-                      image=circ_icn, 
-                      height=30, 
-                      width=30, 
-                      command=open_file)
-circ_btn.pack(side=tk.LEFT)
-
 # Clear Area Button
 clear_btn = tk.Button(btn_frame, 
                       image=erase_icn, 
@@ -279,6 +386,60 @@ clear_btn = tk.Button(btn_frame,
                       command=clear_rect)
 clear_btn.pack(side=tk.LEFT)
 
+# Spacer
+tk.Frame(btn_frame, 
+         width=10,
+         bd=0,
+         relief="ridge") \
+    .pack(side=tk.LEFT)
+    
+# Detect People Button
+ppl_btn   = tk.Button(btn_frame,
+                      image=ppl_icn0,
+                      height=30, 
+                      width=30, 
+                      command=detect_ppl)
+ppl_btn.pack(side=tk.LEFT)
+    
+# Detect Car Button
+car_btn   = tk.Button(btn_frame,
+                      image=car_icn0,
+                      height=30, 
+                      width=30, 
+                      command=detect_car)
+car_btn.pack(side=tk.LEFT)
+    
+# Detect Bike Button
+bike_btn  = tk.Button(btn_frame,
+                      image=bike_icn0,
+                      height=30, 
+                      width=30, 
+                      command=detect_bike)
+bike_btn.pack(side=tk.LEFT)
+
+# Spacer
+tk.Frame(btn_frame, 
+         width=10,
+         bd=0,
+         relief="ridge") \
+    .pack(side=tk.LEFT)
+    
+# Change View Button
+view_btn  = tk.Button(btn_frame,
+                      image=move_icn,
+                      height=30, 
+                      width=30, 
+                      command=change_view)
+view_btn.pack(side=tk.LEFT)
+
+# Import Model Button
+model_btn = tk.Button(btn_frame,
+                      image=impo_icn,
+                      height=30, 
+                      width=30, 
+                      command=import_model)
+model_btn.pack(side=tk.LEFT)
+    
 # Create Canvas for Video Capture
 canvas = tk.Canvas(root, 
                    width=1280, 
