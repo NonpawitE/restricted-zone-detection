@@ -270,19 +270,29 @@ def change_view():
             view_btn.config(image=move_icn)
             
 def import_model():
-    global model
+    global model, device, person_idx, car_idx, bike_idx
     stop_camera()
     
     if str(model_btn['image']) == str(impo_icn):
         file_types = [('YOLOv5 Model', '*.pt')]
         file_path  = filedialog.askopenfilename(filetypes=file_types)
-        model      = torch.load(file_path).eval()
+        model = torch.hub.load('ultralytics/yolov5', 
+                               'custom', 
+                               path=file_path).to(device)
+        
+        person_idx  = list(model.names.values()).index('human')
+        car_idx     = list(model.names.values()).index('car')
+        bike_idx    = list(model.names.values()).index('motorcycle')
         
         model_btn.config(image=remo_icn)
     elif str(view_btn['image']) == str(remo_icn):
         model = torch.hub.load('ultralytics/yolov5', 
                                'yolov5s', 
                                pretrained=True).to(device)
+        
+        person_idx  = list(model.names.values()).index('person')
+        car_idx     = list(model.names.values()).index('car')
+        bike_idx    = list(model.names.values()).index('motorcycle')
         
         model_btn.config(image=impo_icn)
 
