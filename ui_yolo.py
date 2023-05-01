@@ -72,7 +72,6 @@ class VideoStream:
                 boxes_  = boxes_[(scores_ > 0.5) & np.isin(labels_, self.detect)]
                 labels_ = labels_[(scores_ > 0.5) & np.isin(labels_, self.detect)]
                 
-                                
                 if boxes_.size != 0:
                     # Draw bounding boxes
                     self.is_intruded = False
@@ -94,12 +93,13 @@ class VideoStream:
                                                  self.zone_coords[1], 
                                                  self.zone_coords[2], 
                                                  self.zone_coords[3]]):
+                           print("Detected Intruder(s)")
                            
-                            if self.view:
-                                self.canvas.create_rectangle(x1_, y1_,
-                                                             x2_, y2_,
-                                                             outline="yellow",
-                                                             tag="detect")  
+                           if self.view:
+                               self.canvas.create_rectangle(x1_, y1_,
+                                                            x2_, y2_,
+                                                            outline="yellow",
+                                                            tag="detect")  
                     
                 # Check if rectangle exists
                 if self.zone_coords:
@@ -192,6 +192,7 @@ def stop_camera():
         car_btn.config(image=car_icn0) 
         bike_btn.config(image=bike_icn0) 
         view_btn.config(image=move_icn)
+        file_btn.config(image=open_icn)
 
             
 def video_button():
@@ -285,7 +286,7 @@ def import_model():
         bike_idx    = list(model.names.values()).index('motorcycle')
         
         model_btn.config(image=remo_icn)
-    elif str(view_btn['image']) == str(remo_icn):
+    elif str(model_btn['image']) == str(remo_icn):
         model = torch.hub.load('ultralytics/yolov5', 
                                'yolov5s', 
                                pretrained=True).to(device)
